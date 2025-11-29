@@ -3,7 +3,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from infrastructure.db.db import TodoDao, get_db
 from models.todo import Todo
@@ -14,20 +15,24 @@ router = APIRouter()
 
 
 @router.get("/")
-def read_todos(
-    user: Annotated[User, Depends(get_current_user)], db: Session = Depends(get_db)
+async def read_todos(
+    user: Annotated[User, Depends(get_current_user)], db: AsyncSession = Depends(get_db)
 ):
-    todos = db.query(TodoDao).filter(TodoDao.user_id == user.id).all()
+    query = select(TodoDao).where(TodoDao.user_id == user.id)
+    result = await db.execute(query)
+    todos = result.scalars().all()
     return [Todo(**t.__dict__) for t in todos]
 
 
 @router.get("/{id}")
-def read_item(
+async def read_item(
     id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    todo = db.query(TodoDao).filter(TodoDao.id == id).first()
+    query = select(TodoDao).where(TodoDao.id == id).limit(1)
+    result = await db.execute(query)
+    todo = result.scalars().first()
 
     if not todo:
         raise HTTPException(status_code=404, detail="Todo not found")
@@ -45,10 +50,10 @@ class TodoCreate(BaseModel):
 
 
 @router.post("/")
-def post_todo(
+async def post_todo(
     todo: TodoCreate,
     user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     new_todo = TodoDao(
         user_id=user.id,
@@ -57,20 +62,24 @@ def post_todo(
     )
 
     db.add(new_todo)
-    db.commit()
-    db.refresh(new_todo)
+
+    await db.commit()
+    await db.refresh(new_todo)
 
     return Todo(**new_todo.__dict__)
 
 
 @router.put("/{id}")
-def put_todo(
+async def put_todo(
     id: uuid.UUID,
     todo: TodoCreate,
     user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    existing = db.query(TodoDao).filter(TodoDao.id == id).first()
+    query = select(TodoDao).where(TodoDao.id == id).limit(1)
+    result = await db.execute(query)
+    existing = result.scalars().first()
+
     if not existing:
         raise HTTPException(status_code=404, detail="Todo not found")
 
@@ -81,26 +90,29 @@ def put_todo(
     existing.description = todo.description
     existing.completed = todo.completed
 
-    db.commit()
-    db.refresh(existing)
+    await db.commit()
+    await db.refresh(existing)
 
     return Todo(**existing.__dict__)
 
 
 @router.delete("/{id}")
-def remove_todo(
+async def remove_todo(
     id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    todo = db.query(TodoDao).filter(TodoDao.id == id).first()
+    query = select(TodoDao).where(TodoDao.id == id).limit(1)
+    result = await db.execute(query)
+    todo = result.scalars().first()
+
     if not todo:
         raise HTTPException(status_code=404, detail="Todo not found")
 
     if todo.user_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    db.delete(todo)
-    db.commit()
+    await db.delete(todo)
+    await db.commit()
 
     return {"message": "Todo deleted"}

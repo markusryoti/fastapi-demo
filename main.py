@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from alembic.config import Config
+from alembic import command
 
-from migrations.env import run_migrations_online
 from routers import auth, todos, users
 
 
@@ -10,7 +11,9 @@ from routers import auth, todos, users
 async def lifespan(app: FastAPI):
     print("Starting application...")
 
-    run_migrations_online()
+    # Run migrations using Alembic CLI
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
 
     yield
 

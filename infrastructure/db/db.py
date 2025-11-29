@@ -1,31 +1,29 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid, create_engine
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     mapped_column,
     relationship,
-    sessionmaker,
 )
 
-DATABASE_URL = "sqlite:///./todos.db"
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-engine = create_engine(DATABASE_URL, echo=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+DATABASE_URL = "sqlite+aiosqlite:///./todos.db"
 
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+engine = create_async_engine(DATABASE_URL, echo=True)
+AsyncSessionLocal = async_sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
 
 
-def init_db():
-    Base.metadata.create_all(bind=engine)
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session
 
 
 class Base(DeclarativeBase):
@@ -68,19 +66,3 @@ class TodoDao(Base):
     )
 
     user: Mapped["UserDao"] = relationship(back_populates="todos")
-
-
-if __name__ == "__main__":
-    engine = create_engine("sqlite://", echo=True)
-    Session = sessionmaker(bind=engine)
-
-    Base.metadata.create_all(engine)
-
-    with Session() as session:
-        user = UserDao(email="test@example.com", password="password")
-        session.add(user)
-
-        todo = TodoDao(title="Test Todo", description="Test Description", user=user)
-        session.add(todo)
-
-        session.commit()
