@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from infrastructure.db.db import init_db
+from migrations.env import run_migrations_online
 from routers import auth, todos, users
 
 
@@ -10,7 +10,7 @@ from routers import auth, todos, users
 async def lifespan(app: FastAPI):
     print("Starting application...")
 
-    init_db()
+    run_migrations_online()
 
     yield
 
