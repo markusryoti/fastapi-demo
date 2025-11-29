@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,13 +8,18 @@ from alembic import command
 from routers import auth, todos, users
 
 
+def run_migrations():
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting application...")
 
-    # Run migrations using Alembic CLI
-    alembic_cfg = Config("alembic.ini")
-    command.upgrade(alembic_cfg, "head")
+    _ = asyncio.to_thread(
+        run_migrations,
+    )
 
     yield
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 import uuid
 from typing import Annotated
 
@@ -6,12 +7,22 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infrastructure.db.db import TodoDao, get_db
-from models.todo import Todo
-from models.user import User
+from models.models import TodoDao
+from .users import User
+
+from infrastructure.db.db import get_db
 from routers.auth import get_current_user
 
 router = APIRouter()
+
+
+class Todo(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    completed: bool = False
+    created_at: datetime = datetime.now()
+    user_id: uuid.UUID
 
 
 @router.get("/")
