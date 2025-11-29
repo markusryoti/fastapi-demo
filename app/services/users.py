@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from models.models import UserDao
+from infrastructure.models import UserDao
 
 
 fake_users_db = {

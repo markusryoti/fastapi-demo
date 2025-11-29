@@ -1,17 +1,16 @@
-from datetime import datetime
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.db import get_db
+from infrastructure.models import TodoDao
 from pydantic import BaseModel
+from routers.auth import get_current_user
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.models import TodoDao
 from .users import User
-
-from infrastructure.db.db import get_db
-from routers.auth import get_current_user
 
 router = APIRouter()
 
