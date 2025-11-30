@@ -1,4 +1,5 @@
 import uuid
+
 from app.domain.todo import Todo
 from app.domain.user import User
 from app.repository.todo import TodoRepositoryInterface

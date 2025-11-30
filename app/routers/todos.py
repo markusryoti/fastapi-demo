@@ -3,16 +3,16 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from app.domain.user import User
-from app.repository.todo import TodoRepository, TodoRepositoryInterface
-from app.services.todo import TodoService
-from app.infrastructure.db import get_session
 from pydantic import BaseModel
-from app.routers.auth import get_current_user
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.todo import Todo
+from app.domain.user import User
+from app.infrastructure.db import get_session
+from app.repository.todo import TodoRepository, TodoRepositoryInterface
+from app.routers.auth import get_current_user
+from app.services.todo import TodoService
 from app.shared.errors import ForbiddenException, NotFoundException
-
 
 router = APIRouter()
 
@@ -24,6 +24,17 @@ class TodoDto(BaseModel):
     completed: bool = False
     created_at: datetime = datetime.now()
     user_id: uuid.UUID
+
+    @staticmethod
+    def from_domain(todo: Todo):
+        return TodoDto(
+            id=todo.id,
+            title=todo.title,
+            description=todo.description,
+            completed=todo.completed,
+            created_at=todo.created_at,
+            user_id=todo.user_id,
+        )
 
 
 def get_todo_repository(session: AsyncSession = Depends(get_session)) -> TodoRepository:
@@ -40,9 +51,9 @@ def get_todo_service(
 async def read_todos(
     user: Annotated[User, Depends(get_current_user)],
     service: TodoService = Depends(get_todo_service),
-):
+) -> list[TodoDto]:
     todos = await service.list_user_todos(user)
-    return {"todos": [TodoDto(**todo.__dict__) for todo in todos]}
+    return [TodoDto.from_domain(todo) for todo in todos]
 
 
 @router.get("/{id}")
@@ -50,7 +61,7 @@ async def read_item(
     id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
     service: TodoService = Depends(get_todo_service),
-):
+) -> TodoDto:
     try:
         todo = await service.get_todo_by_id(id, user)
     except NotFoundException:
@@ -59,7 +70,7 @@ async def read_item(
     except ForbiddenException:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    return TodoDto(**todo.__dict__)
+    return TodoDto.from_domain(todo)
 
 
 class TodoCreate(BaseModel):
@@ -73,7 +84,7 @@ async def post_todo(
     todo: TodoCreate,
     user: Annotated[User, Depends(get_current_user)],
     service: TodoService = Depends(get_todo_service),
-):
+) -> TodoDto:
     try:
         created = await service.create_todo(
             todo.title, todo.description, todo.completed, user
@@ -83,7 +94,7 @@ async def post_todo(
     except ForbiddenException:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    return TodoDto(**created.__dict__)
+    return TodoDto.from_domain(created)
 
 
 @router.put("/{id}")
@@ -92,7 +103,7 @@ async def put_todo(
     todo: TodoCreate,
     user: Annotated[User, Depends(get_current_user)],
     service: TodoService = Depends(get_todo_service),
-):
+) -> TodoDto:
     try:
         updated = await service.update_todo(
             id, todo.title, todo.description, todo.completed, user
@@ -102,7 +113,11 @@ async def put_todo(
     except ForbiddenException:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    return TodoDto(**updated.__dict__)
+    return TodoDto.from_domain(updated)
+
+
+class DeleteResponse(BaseModel):
+    message: str
 
 
 @router.delete("/{id}")
@@ -110,7 +125,7 @@ async def remove_todo(
     id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
     service: TodoService = Depends(get_todo_service),
-):
+) -> DeleteResponse:
     try:
         await service.delete_todo(id, user)
     except NotFoundException:
@@ -118,4 +133,4 @@ async def remove_todo(
     except ForbiddenException:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    return {"message": "Todo deleted"}
+    return DeleteResponse(message="Todo deleted successfully")

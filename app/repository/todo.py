@@ -1,11 +1,12 @@
-from abc import ABC, abstractmethod
 import uuid
+from abc import ABC, abstractmethod
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.errors import NotFoundException
-from app.infrastructure.models import TodoDao
 from app.domain.todo import Todo
+from app.infrastructure.models import TodoDao
+from app.shared.errors import NotFoundException
 
 
 class TodoRepositoryInterface(ABC):
@@ -46,13 +47,13 @@ class TodoRepository(TodoRepositoryInterface):
         self.session.add(todo_dao)
         await self.session.flush()
         await self.session.refresh(todo_dao)
-        return self.dao_to_domain(todo_dao)
+        return TodoRepository.dao_to_domain(todo_dao)
 
     async def get_todo_by_id(self, todo_id: uuid.UUID) -> Todo | None:
         query = select(TodoDao).where(TodoDao.id == todo_id).limit(1)
         result = await self.session.execute(query)
         todo = result.scalars().first()
-        return self.dao_to_domain(todo) if todo else None
+        return TodoRepository.dao_to_domain(todo) if todo else None
 
     async def update_todo(self, todo: Todo) -> Todo:
         result = await self.session.execute(
@@ -70,7 +71,7 @@ class TodoRepository(TodoRepositoryInterface):
 
         await self.session.flush()
 
-        return self.dao_to_domain(existing)
+        return TodoRepository.dao_to_domain(existing)
 
     async def delete_todo(self, todo_id: uuid.UUID) -> None:
         query = select(TodoDao).where(TodoDao.id == todo_id).limit(1)
@@ -87,9 +88,10 @@ class TodoRepository(TodoRepositoryInterface):
         query = select(TodoDao).where(TodoDao.user_id == user_id)
         result = await self.session.execute(query)
         todos = result.scalars().all()
-        return [self.dao_to_domain(t) for t in todos]
+        return [TodoRepository.dao_to_domain(t) for t in todos]
 
-    def dao_to_domain(self, todo_dao: TodoDao) -> Todo:
+    @staticmethod
+    def dao_to_domain(todo_dao: TodoDao) -> Todo:
         return Todo(
             id=todo_dao.id,
             title=todo_dao.title,
