@@ -3,19 +3,21 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from infrastructure.db import get_db
-from infrastructure.models import TodoDao
+from app.domain.user import User
+from app.repository.todo import TodoRepository
+from app.services.todo import TodoService
+from app.infrastructure.db import get_session
+from app.infrastructure.models import TodoDao
 from pydantic import BaseModel
-from routers.auth import get_current_user
+from app.routers.auth import get_current_user
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .users import User
 
 router = APIRouter()
 
 
-class Todo(BaseModel):
+class TodoDto(BaseModel):
     id: uuid.UUID
     title: str
     description: str
@@ -24,21 +26,30 @@ class Todo(BaseModel):
     user_id: uuid.UUID
 
 
+def get_todo_repository(session: AsyncSession = Depends(get_session)) -> TodoRepository:
+    return TodoRepository(session)
+
+
+def get_todo_service(
+    todo_repository: TodoRepository = Depends(get_todo_repository),
+) -> TodoService:
+    return TodoService(todo_repository)
+
+
 @router.get("/")
 async def read_todos(
-    user: Annotated[User, Depends(get_current_user)], db: AsyncSession = Depends(get_db)
+    user: Annotated[User, Depends(get_current_user)],
+    service: TodoService = Depends(get_todo_service),
 ):
-    query = select(TodoDao).where(TodoDao.user_id == user.id)
-    result = await db.execute(query)
-    todos = result.scalars().all()
-    return [Todo(**t.__dict__) for t in todos]
+    todos = await service.list_user_todos(user)
+    return {"todos": [TodoDto(**todo.__dict__) for todo in todos]}
 
 
 @router.get("/{id}")
 async def read_item(
     id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
 ):
     query = select(TodoDao).where(TodoDao.id == id).limit(1)
     result = await db.execute(query)
@@ -50,7 +61,7 @@ async def read_item(
     if todo.user_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    return Todo(**todo.__dict__) if todo else None
+    return TodoDto(**todo.__dict__) if todo else None
 
 
 class TodoCreate(BaseModel):
@@ -63,7 +74,7 @@ class TodoCreate(BaseModel):
 async def post_todo(
     todo: TodoCreate,
     user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
 ):
     new_todo = TodoDao(
         user_id=user.id,
@@ -76,7 +87,7 @@ async def post_todo(
     await db.commit()
     await db.refresh(new_todo)
 
-    return Todo(**new_todo.__dict__)
+    return TodoDto(**new_todo.__dict__)
 
 
 @router.put("/{id}")
@@ -84,7 +95,7 @@ async def put_todo(
     id: uuid.UUID,
     todo: TodoCreate,
     user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
 ):
     query = select(TodoDao).where(TodoDao.id == id).limit(1)
     result = await db.execute(query)
@@ -103,14 +114,14 @@ async def put_todo(
     await db.commit()
     await db.refresh(existing)
 
-    return Todo(**existing.__dict__)
+    return TodoDto(**existing.__dict__)
 
 
 @router.delete("/{id}")
 async def remove_todo(
     id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_session),
 ):
     query = select(TodoDao).where(TodoDao.id == id).limit(1)
     result = await db.execute(query)

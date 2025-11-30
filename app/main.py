@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from alembic.config import Config
 from alembic import command
 
-from routers import auth, todos, users
+from app.routers import auth, todos, users
 
 
 def run_migrations():

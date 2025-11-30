@@ -3,10 +3,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
-from .users import User
-from services.jwt import Token, create_access_token, decode_token
-from services.password import verify_password
-from services.users import get_user
+from app.domain.user import User
+
+from .users import UserDto
+from app.services.jwt import Token, create_access_token, decode_token
+from app.services.password import verify_password
+from app.services.users import get_user
 
 router = APIRouter()
 
@@ -32,7 +34,8 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
     if user is None:
         raise credentials_exception
 
-    return User(**user.__dict__)
+    dto = UserDto(**user.__dict__)
+    return dto.to_domain()
 
 
 def authenticate_user(email: str, password: str) -> User | None:
@@ -41,7 +44,7 @@ def authenticate_user(email: str, password: str) -> User | None:
         return None
     if not verify_password(password, user.password):
         return None
-    return User(**user.__dict__)
+    return UserDto(**user.__dict__).to_domain()
 
 
 @router.post("/token")
@@ -61,13 +64,13 @@ async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]) -> T
 
 @router.get("/users/me")
 async def read_users_me(
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserDto, Depends(get_current_user)],
 ):
     return current_user
 
 
 @router.get("/me/items/")
 async def read_own_items(
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserDto, Depends(get_current_user)],
 ):
     return [{"item_id": "Foo", "owner": current_user.email}]
