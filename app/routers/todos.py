@@ -4,14 +4,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from app.domain.user import User
-from app.repository.todo import TodoRepository
+from app.repository.todo import TodoRepository, TodoRepositoryInterface
 from app.services.todo import TodoService
 from app.infrastructure.db import get_session
-from app.infrastructure.models import TodoDao
 from pydantic import BaseModel
 from app.routers.auth import get_current_user
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.shared.errors import ForbiddenException, NotFoundException
 
 
 router = APIRouter()
@@ -31,7 +31,7 @@ def get_todo_repository(session: AsyncSession = Depends(get_session)) -> TodoRep
 
 
 def get_todo_service(
-    todo_repository: TodoRepository = Depends(get_todo_repository),
+    todo_repository: TodoRepositoryInterface = Depends(get_todo_repository),
 ) -> TodoService:
     return TodoService(todo_repository)
 
@@ -49,19 +49,17 @@ async def read_todos(
 async def read_item(
     id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_session),
+    service: TodoService = Depends(get_todo_service),
 ):
-    query = select(TodoDao).where(TodoDao.id == id).limit(1)
-    result = await db.execute(query)
-    todo = result.scalars().first()
-
-    if not todo:
+    try:
+        todo = await service.get_todo_by_id(id, user)
+    except NotFoundException:
         raise HTTPException(status_code=404, detail="Todo not found")
 
-    if todo.user_id != user.id:
+    except ForbiddenException:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    return TodoDto(**todo.__dict__) if todo else None
+    return TodoDto(**todo.__dict__)
 
 
 class TodoCreate(BaseModel):
@@ -74,20 +72,18 @@ class TodoCreate(BaseModel):
 async def post_todo(
     todo: TodoCreate,
     user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_session),
+    service: TodoService = Depends(get_todo_service),
 ):
-    new_todo = TodoDao(
-        user_id=user.id,
-        title=todo.title,
-        description=todo.description,
-    )
+    try:
+        created = await service.create_todo(
+            todo.title, todo.description, todo.completed, user
+        )
+    except NotFoundException:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    except ForbiddenException:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
-    db.add(new_todo)
-
-    await db.commit()
-    await db.refresh(new_todo)
-
-    return TodoDto(**new_todo.__dict__)
+    return TodoDto(**created.__dict__)
 
 
 @router.put("/{id}")
@@ -95,45 +91,31 @@ async def put_todo(
     id: uuid.UUID,
     todo: TodoCreate,
     user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_session),
+    service: TodoService = Depends(get_todo_service),
 ):
-    query = select(TodoDao).where(TodoDao.id == id).limit(1)
-    result = await db.execute(query)
-    existing = result.scalars().first()
-
-    if not existing:
+    try:
+        updated = await service.update_todo(
+            id, todo.title, todo.description, todo.completed, user
+        )
+    except NotFoundException:
         raise HTTPException(status_code=404, detail="Todo not found")
-
-    if existing.user_id != user.id:
+    except ForbiddenException:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    existing.title = todo.title
-    existing.description = todo.description
-    existing.completed = todo.completed
-
-    await db.commit()
-    await db.refresh(existing)
-
-    return TodoDto(**existing.__dict__)
+    return TodoDto(**updated.__dict__)
 
 
 @router.delete("/{id}")
 async def remove_todo(
     id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_session),
+    service: TodoService = Depends(get_todo_service),
 ):
-    query = select(TodoDao).where(TodoDao.id == id).limit(1)
-    result = await db.execute(query)
-    todo = result.scalars().first()
-
-    if not todo:
+    try:
+        await service.delete_todo(id, user)
+    except NotFoundException:
         raise HTTPException(status_code=404, detail="Todo not found")
-
-    if todo.user_id != user.id:
+    except ForbiddenException:
         raise HTTPException(status_code=403, detail="Forbidden")
-
-    await db.delete(todo)
-    await db.commit()
 
     return {"message": "Todo deleted"}

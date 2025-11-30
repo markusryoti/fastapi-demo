@@ -1,23 +1,26 @@
 import uuid
 from app.domain.todo import Todo
 from app.domain.user import User
-from app.repository.todo import TodoRepository
+from app.repository.todo import TodoRepositoryInterface
 from app.shared.errors import ForbiddenException, NotFoundException
 
 
 class TodoService:
-    def __init__(self, todo_repository: TodoRepository):
+    def __init__(self, todo_repository: TodoRepositoryInterface):
         self.todo_repository = todo_repository
 
     async def list_user_todos(self, user: User) -> list[Todo]:
         return await self.todo_repository.list_user_todos(user.id)
 
-    async def create_todo(self, title: str, description: str, user: User) -> Todo:
+    async def create_todo(
+        self, title: str, description: str, completed: bool, user: User
+    ) -> Todo:
         todo = Todo(
             id=uuid.uuid4(),
             user_id=user.id,
             title=title,
             description=description,
+            completed=completed,
         )
 
         return await self.todo_repository.create_todo(todo)

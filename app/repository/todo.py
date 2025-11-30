@@ -44,7 +44,7 @@ class TodoRepository(TodoRepositoryInterface):
             created_at=todo.created_at,
         )
         self.session.add(todo_dao)
-        await self.session.commit()
+        await self.session.flush()
         await self.session.refresh(todo_dao)
         return self.dao_to_domain(todo_dao)
 
@@ -55,9 +55,11 @@ class TodoRepository(TodoRepositoryInterface):
         return self.dao_to_domain(todo) if todo else None
 
     async def update_todo(self, todo: Todo) -> Todo:
-        query = select(TodoDao).where(TodoDao.id == todo.id).limit(1)
-        result = await self.session.execute(query)
-        existing = result.scalars().first()
+        result = await self.session.execute(
+            select(TodoDao).where(TodoDao.id == todo.id).with_for_update()
+        )
+
+        existing = result.scalar_one_or_none()
 
         if not existing:
             raise NotFoundException("Todo not found")
@@ -66,8 +68,7 @@ class TodoRepository(TodoRepositoryInterface):
         existing.description = todo.description
         existing.completed = todo.completed
 
-        await self.session.commit()
-        await self.session.refresh(existing)
+        await self.session.flush()
 
         return self.dao_to_domain(existing)
 
